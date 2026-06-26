@@ -51,7 +51,10 @@ const result = await safeRefund({ orderId: "ord-9", amount: 250 });
 import { admit, AdmissionError } from "tulip-frameworks-js";
 
 try {
-  await admit({ name: "exec", asset: "deploy.sh", environment: "production" }, { principal: "agent:1" });
+  await admit(
+    { name: "exec", asset: "deploy.sh", environment: "production" },
+    { principal: "agent:1" },
+  );
   await runIt(); // reached only on ALLOW (or once a human approves)
 } catch (e) {
   if (e instanceof AdmissionError) console.log("blocked:", e.decision.reason);
@@ -64,11 +67,11 @@ human approves (then consumes the single-use approval) or denies/times out; on
 
 ## API
 
-| Export | What it does |
-|---|---|
-| `requestDecision(action, opts)` | One round-trip → the raw `Decision` (no polling). |
-| `admit(action, opts)` | The full blocking gate: poll a held action, then consume. |
-| `gateTool(fn, toAction, opts)` | Wrap a tool; soft mode returns a held/denied result instead of blocking. |
+| Export                          | What it does                                                             |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `requestDecision(action, opts)` | One round-trip → the raw `Decision` (no polling).                        |
+| `admit(action, opts)`           | The full blocking gate: poll a held action, then consume.                |
+| `gateTool(fn, toAction, opts)`  | Wrap a tool; soft mode returns a held/denied result instead of blocking. |
 
 `Action`: `{ name, asset?, blastRadius?, environment?, kind?, tags? }` — mirrors
 `tulip.control.Action`. `opts`: `gatewayUrl` (default `http://127.0.0.1:8420`),
