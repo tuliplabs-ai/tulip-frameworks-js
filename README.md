@@ -3,12 +3,15 @@
 **Gate a TypeScript/JS agent's actions through Tulip's control gate — the same
 policy and tamper-evident audit chain as Python agents, over one HTTP call.**
 
-Tulip's control gate (`admit()`) decides whether an agent's action runs, holds for a
-human, or is denied — and records every decision. `tulip-frameworks-js` lets a
-**non-Python** agent (OpenClaw, a Vercel AI SDK / LangChain.js tool, your own loop)
-reach that same gate by calling the Tulip gateway's `POST /v1/admit` RPC. No policy
-logic lives in this client; the decision stays server-side, so every agent in every
-language crosses **one** policy + audit point.
+[Tulip](https://tulipagents.ai) is **the safest way to build agentic AI** — a
+full-stack agent SDK where control is native. `tulip-frameworks-js` brings **just
+that control layer** to an agent you built outside Python. Tulip's control gate
+(`admit()`) decides whether an agent's action runs, holds for a human, or is denied —
+and records every decision. This client lets a **non-Python** agent (OpenClaw, a
+Vercel AI SDK / LangChain.js tool, your own loop) reach that same gate by calling the
+Tulip gateway's `POST /v1/admit` RPC. No policy logic lives in this client; the
+decision stays server-side, so every agent in every language crosses **one** policy +
+audit point.
 
 This is the Python SDK's `admit()`, split across the wire — one engine, thin clients
 (the Open Policy Agent model).
