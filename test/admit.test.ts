@@ -4,7 +4,7 @@
 // Offline unit tests — a fake fetch stands in for the gateway, so no network and
 // no running server. Helpers live at module scope so test bodies stay branch-free.
 
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { admit, AdmissionError, gateTool, requestDecision } from "../src/index.js";
 
@@ -151,4 +151,142 @@ test("gateTool soft: REQUIRE_HUMAN returns a held result and the tool never runs
     approvalId: "ap1",
   });
   expect(ran).toStrictEqual([]);
+});
+
+test("requestDecision throws when the gateway returns a non-OK status", async () => {
+  const fetchImpl = mockFetch(() => ({ status: 503, json: { detail: "down" } }));
+  await expect(requestDecision({ name: "x" }, { fetchImpl })).rejects.toThrow(
+    /POST \/v1\/admit failed: 503/,
+  );
+});
+
+test("requestDecision forwards explicitly-provided options + action fields", async () => {
+  let sent: any;
+  const fetchImpl = mockFetch((_url, init) => {
+    sent = JSON.parse(String(init.body));
+    return { json: ALLOW };
+  });
+  await requestDecision(
+    { name: "fs_write", asset: "/etc", blastRadius: 9, kind: "fs", environment: "prod", tags: [] },
+    { fetchImpl, principal: "ciso", policyRef: "strict", idempotencyKey: "k1" },
+  );
+  expect(sent.principal).toBe("ciso");
+  expect(sent.policy_ref).toBe("strict");
+  expect(sent.idempotency_key).toBe("k1");
+  expect(sent.action).toStrictEqual({
+    name: "fs_write",
+    asset: "/etc",
+    blast_radius: 9,
+    environment: "prod",
+    kind: "fs",
+    tags: [],
+  });
+});
+
+test("admit throws when require_human arrives without an approval id", async () => {
+  const fetchImpl = mockFetch(() => ({ json: { ...HOLD, approval_id: null } }));
+  await expect(admit({ name: "exec", environment: "production" }, { fetchImpl })).rejects.toThrow(
+    AdmissionError,
+  );
+});
+
+test("admit approval without decided_by falls back to 'human'", async () => {
+  const router: Router = (url, init) =>
+    isAdmitPost(url, init) ? { json: HOLD } : { json: { state: "approved" } };
+  const d = await admit(
+    { name: "exec", environment: "production" },
+    { fetchImpl: mockFetch(router), pollIntervalMs: 1 },
+  );
+  expect(d.reason).toBe("approved by human");
+});
+
+test("admit throws a timeout error once the deadline passes", async () => {
+  const fetchImpl = mockFetch((url, init) =>
+    isAdmitPost(url, init) ? { json: HOLD } : { json: { state: "pending" } },
+  );
+  await expect(
+    admit(
+      { name: "exec", environment: "production" },
+      { fetchImpl, pollIntervalMs: 1, timeoutMs: -1 },
+    ),
+  ).rejects.toThrow(/approval timed out/);
+});
+
+test("gateTool soft: DENY returns a denied result and the tool never runs", async () => {
+  const fetchImpl = mockFetch(() => ({ json: DENY }));
+  const ran: string[] = [];
+  const gated = gateTool(
+    (a: { id: string }) => {
+      ran.push(a.id);
+      return "ran";
+    },
+    () => ({ name: "act" }),
+    { fetchImpl },
+  );
+  const res = await gated({ id: "z" });
+  expect(res).toStrictEqual({
+    status: "denied",
+    outcome: "deny",
+    reason: "denied",
+    approvalId: null,
+  });
+  expect(ran).toStrictEqual([]);
+});
+
+test("admit returns immediately on ALLOW (no polling)", async () => {
+  const fetchImpl = mockFetch(() => ({ json: ALLOW }));
+  const d = await admit({ name: "read" }, { fetchImpl });
+  expect(d.allowed).toBe(true);
+  expect(d.outcome).toBe("allow");
+});
+
+test("admit uses default poll/timeout when unset (approved on first poll)", async () => {
+  const router: Router = (url, init) =>
+    isAdmitPost(url, init) ? { json: HOLD } : { json: { state: "approved", decided_by: "ciso" } };
+  // No pollIntervalMs / timeoutMs → exercises the `?? 1000` / `?? 300_000` defaults.
+  const d = await admit(
+    { name: "exec", environment: "production" },
+    { fetchImpl: mockFetch(router) },
+  );
+  expect(d.allowed).toBe(true);
+});
+
+test("admit denial without decided_by falls back to 'human'", async () => {
+  const router: Router = (url, init) =>
+    isAdmitPost(url, init) ? { json: HOLD } : { json: { state: "denied" } };
+  await expect(
+    admit(
+      { name: "exec", environment: "production" },
+      { fetchImpl: mockFetch(router), pollIntervalMs: 1 },
+    ),
+  ).rejects.toThrow(/denied by human/);
+});
+
+test("requestDecision tolerates a minimal response body (field fallbacks)", async () => {
+  const fetchImpl = mockFetch(() => ({ json: { outcome: "allow", allowed: true } }));
+  const d = await requestDecision({ name: "x" }, { fetchImpl });
+  expect(d).toStrictEqual({
+    outcome: "allow",
+    allowed: true,
+    reason: "",
+    checks: [],
+    approvalId: null,
+    auditId: "",
+  });
+});
+
+test("requestDecision uses the global fetch + a custom gatewayUrl when no fetchImpl is given", async () => {
+  const calls: string[] = [];
+  const stub = vi.fn<(url: string | URL | Request) => Promise<Response>>(async (url) => {
+    calls.push(String(url));
+    return { ok: true, status: 200, json: async () => ALLOW, text: async () => "" } as Response;
+  });
+  vi.stubGlobal("fetch", stub);
+  try {
+    const d = await requestDecision({ name: "x" }, { gatewayUrl: "http://gw.example:9000" });
+    expect(d.allowed).toBe(true);
+    expect(calls[0]).toBe("http://gw.example:9000/v1/admit");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
