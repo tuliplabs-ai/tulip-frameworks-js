@@ -3,9 +3,11 @@
 **Gate a TypeScript/JS agent's actions through Tulip's control gate — the same
 policy and tamper-evident audit chain as Python agents, over one HTTP call.**
 
-[Tulip](https://tulipagents.ai) is **the safest way to build agentic AI** — an
-open-source **agentic harness** where control is native. `tulip-frameworks-js` brings **just
-that control layer** to an agent you built outside Python. Tulip's control gate
+[Tulip](https://tulipagents.ai) is an open-source **agentic harness** — the
+control runtime for agents that act: a consequential action runs only after your
+policy clears it, waits for a person when it matters, and lands on a record you
+can prove. `tulip-frameworks-js` brings **just that control layer** to an agent
+you built outside Python. Tulip's control gate
 (`admit()`) decides whether an agent's action runs, holds for a human, or is denied —
 and records every decision. This client lets a **non-Python** agent (OpenClaw, a
 Vercel AI SDK / LangChain.js tool, your own loop) reach that same gate by calling the
